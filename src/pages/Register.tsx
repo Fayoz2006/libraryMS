@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,9 +13,24 @@ import {
 } from "@/components/ui/select";
 import { Book, Mail, Lock, User, ArrowRight, GraduationCap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { z } from "zod";
+
+const registerSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters").max(100, "Name must be less than 100 characters"),
+  email: z.string().email("Please enter a valid email address").max(255, "Email must be less than 255 characters"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  confirmPassword: z.string(),
+  role: z.enum(["student", "faculty"], { required_error: "Please select a role" }),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+});
 
 const Register = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const { signUp, user } = useAuth();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -25,13 +40,21 @@ const Register = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
 
+  // Redirect if already logged in
+  if (user) {
+    navigate("/");
+    return null;
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (formData.password !== formData.confirmPassword) {
+    // Validate input
+    const validation = registerSchema.safeParse(formData);
+    if (!validation.success) {
       toast({
-        title: "Passwords don't match",
-        description: "Please make sure your passwords match.",
+        title: "Validation Error",
+        description: validation.error.errors[0].message,
         variant: "destructive",
       });
       return;
@@ -39,14 +62,33 @@ const Register = () => {
 
     setIsLoading(true);
 
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false);
+    const { error } = await signUp(
+      formData.email,
+      formData.password,
+      formData.name,
+      formData.role
+    );
+
+    setIsLoading(false);
+
+    if (error) {
+      let errorMessage = error.message;
+      if (error.message.includes("User already registered")) {
+        errorMessage = "An account with this email already exists. Please sign in instead.";
+      }
       toast({
-        title: "Backend Required",
-        description: "Connect to Supabase to enable user registration.",
+        title: "Registration failed",
+        description: errorMessage,
+        variant: "destructive",
       });
-    }, 1000);
+      return;
+    }
+
+    toast({
+      title: "Account created!",
+      description: "Welcome to LibraryMS. You are now signed in.",
+    });
+    navigate("/");
   };
 
   return (

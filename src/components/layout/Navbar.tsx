@@ -1,12 +1,17 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Book, Menu, X, User, LogIn, Search } from "lucide-react";
+import { Book, Menu, X, User, LogIn, LogOut, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+  const { toast } = useToast();
 
   const navLinks = [
     { href: "/", label: "Home" },
@@ -15,6 +20,15 @@ const Navbar = () => {
   ];
 
   const isActive = (path: string) => location.pathname === path;
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast({
+      title: "Signed out",
+      description: "You have been successfully signed out.",
+    });
+    navigate("/");
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
@@ -52,18 +66,32 @@ const Navbar = () => {
                 <Search className="w-5 h-5" />
               </Button>
             </Link>
-            <Link to="/login">
-              <Button variant="outline" className="gap-2">
-                <LogIn className="w-4 h-4" />
-                Sign In
-              </Button>
-            </Link>
-            <Link to="/register">
-              <Button className="gap-2">
-                <User className="w-4 h-4" />
-                Register
-              </Button>
-            </Link>
+            {user ? (
+              <>
+                <span className="text-sm text-muted-foreground">
+                  {user.email}
+                </span>
+                <Button variant="outline" className="gap-2" onClick={handleSignOut}>
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </Button>
+              </>
+            ) : (
+              <>
+                <Link to="/login">
+                  <Button variant="outline" className="gap-2">
+                    <LogIn className="w-4 h-4" />
+                    Sign In
+                  </Button>
+                </Link>
+                <Link to="/register">
+                  <Button className="gap-2">
+                    <User className="w-4 h-4" />
+                    Register
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -96,12 +124,20 @@ const Navbar = () => {
                 </Link>
               ))}
               <div className="flex gap-2 mt-4 px-4">
-                <Link to="/login" className="flex-1" onClick={() => setIsOpen(false)}>
-                  <Button variant="outline" className="w-full">Sign In</Button>
-                </Link>
-                <Link to="/register" className="flex-1" onClick={() => setIsOpen(false)}>
-                  <Button className="w-full">Register</Button>
-                </Link>
+                {user ? (
+                  <Button variant="outline" className="w-full" onClick={() => { handleSignOut(); setIsOpen(false); }}>
+                    Sign Out
+                  </Button>
+                ) : (
+                  <>
+                    <Link to="/login" className="flex-1" onClick={() => setIsOpen(false)}>
+                      <Button variant="outline" className="w-full">Sign In</Button>
+                    </Link>
+                    <Link to="/register" className="flex-1" onClick={() => setIsOpen(false)}>
+                      <Button className="w-full">Register</Button>
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
           </div>
