@@ -16,21 +16,22 @@ export default {
   		fontFamily: {
   			serif: [
   				'Playfair Display',
+  				'ui-serif',
   				'Georgia',
+  				'Cambria',
+  				'Times New Roman',
+  				'Times',
   				'serif'
   			],
   			sans: [
   				'Space Grotesk',
   				'ui-sans-serif',
   				'system-ui',
-  				'-apple-system',
-  				'BlinkMacSystemFont',
-  				'Segoe UI',
-  				'Roboto',
-  				'Helvetica Neue',
-  				'Arial',
-  				'Noto Sans',
-  				'sans-serif'
+  				'sans-serif',
+  				'Apple Color Emoji',
+  				'Segoe UI Emoji',
+  				'Segoe UI Symbol',
+  				'Noto Color Emoji'
   			],
   			mono: [
   				'Space Mono',
