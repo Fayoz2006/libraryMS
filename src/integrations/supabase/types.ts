@@ -14,6 +14,92 @@ export type Database = {
   }
   public: {
     Tables: {
+      books: {
+        Row: {
+          author: string
+          available_copies: number
+          category: string | null
+          cover_url: string | null
+          created_at: string
+          description: string | null
+          id: string
+          isbn: string
+          title: string
+          total_copies: number
+          updated_at: string
+        }
+        Insert: {
+          author: string
+          available_copies?: number
+          category?: string | null
+          cover_url?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          isbn: string
+          title: string
+          total_copies?: number
+          updated_at?: string
+        }
+        Update: {
+          author?: string
+          available_copies?: number
+          category?: string | null
+          cover_url?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          isbn?: string
+          title?: string
+          total_copies?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      borrowings: {
+        Row: {
+          book_id: string
+          borrow_date: string
+          created_at: string
+          due_date: string
+          id: string
+          return_date: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          book_id: string
+          borrow_date?: string
+          created_at?: string
+          due_date: string
+          id?: string
+          return_date?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          book_id?: string
+          borrow_date?: string
+          created_at?: string
+          due_date?: string
+          id?: string
+          return_date?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "borrowings_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
