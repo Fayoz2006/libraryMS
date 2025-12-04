@@ -1,20 +1,47 @@
 import { useState, useMemo } from "react";
 import { Helmet } from "react-helmet-async";
+import { Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
-import BookCard from "@/components/books/BookCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, Filter, BookOpen } from "lucide-react";
-import { sampleBooks, categories } from "@/data/books";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Search, Filter, BookOpen, Loader2 } from "lucide-react";
+import { useBooks, Book } from "@/hooks/useBooks";
+import { useBorrowBook } from "@/hooks/useBorrowings";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
+import { useToast } from "@/hooks/use-toast";
 
 const Catalog = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [showAvailableOnly, setShowAvailableOnly] = useState(false);
+  const [borrowingBook, setBorrowingBook] = useState<Book | null>(null);
+
+  const { data: books, isLoading } = useBooks();
+  const borrowBook = useBorrowBook();
+  const { user } = useAuth();
+  const { isFaculty } = useUserRole();
+  const { toast } = useToast();
+
+  const categories = useMemo(() => {
+    if (!books) return ["All"];
+    const cats = [...new Set(books.map((b) => b.category).filter(Boolean))];
+    return ["All", ...cats];
+  }, [books]);
 
   const filteredBooks = useMemo(() => {
-    return sampleBooks.filter((book) => {
+    if (!books) return [];
+    return books.filter((book) => {
       const matchesSearch =
         book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         book.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -23,11 +50,44 @@ const Catalog = () => {
       const matchesCategory =
         selectedCategory === "All" || book.category === selectedCategory;
 
-      const matchesAvailability = !showAvailableOnly || book.available;
+      const matchesAvailability = !showAvailableOnly || book.available_copies > 0;
 
       return matchesSearch && matchesCategory && matchesAvailability;
     });
-  }, [searchQuery, selectedCategory, showAvailableOnly]);
+  }, [books, searchQuery, selectedCategory, showAvailableOnly]);
+
+  const handleBorrow = () => {
+    if (!borrowingBook || !user) return;
+    const daysToKeep = isFaculty ? 30 : 14; // Faculty gets 30 days, students get 14
+    borrowBook.mutate(
+      { bookId: borrowingBook.id, daysToKeep },
+      {
+        onSuccess: () => {
+          setBorrowingBook(null);
+        },
+      }
+    );
+  };
+
+  const handleBorrowClick = (book: Book) => {
+    if (!user) {
+      toast({
+        title: "Login required",
+        description: "Please login to borrow books",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (book.available_copies <= 0) {
+      toast({
+        title: "Not available",
+        description: "This book is currently not available",
+        variant: "destructive",
+      });
+      return;
+    }
+    setBorrowingBook(book);
+  };
 
   return (
     <>
@@ -80,7 +140,7 @@ const Catalog = () => {
                     key={category}
                     variant={selectedCategory === category ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setSelectedCategory(category)}
+                    onClick={() => setSelectedCategory(category as string)}
                     className="whitespace-nowrap"
                   >
                     {category}
@@ -125,10 +185,43 @@ const Catalog = () => {
             </div>
 
             {/* Books Grid */}
-            {filteredBooks.length > 0 ? (
+            {isLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            ) : filteredBooks.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {filteredBooks.map((book, index) => (
-                  <BookCard key={book.id} book={book} index={index} />
+                {filteredBooks.map((book) => (
+                  <Card key={book.id} className="group overflow-hidden hover:shadow-lg transition-shadow">
+                    <CardContent className="p-0">
+                      <div className="aspect-[3/4] bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                        <BookOpen className="w-16 h-16 text-primary/30" />
+                      </div>
+                      <div className="p-4">
+                        <Badge variant={book.available_copies > 0 ? "default" : "secondary"} className="mb-2">
+                          {book.available_copies > 0 ? `${book.available_copies} Available` : "Unavailable"}
+                        </Badge>
+                        <h3 className="font-serif font-semibold text-foreground line-clamp-2 mb-1">
+                          {book.title}
+                        </h3>
+                        <p className="text-sm text-muted-foreground mb-2">by {book.author}</p>
+                        {book.category && (
+                          <Badge variant="outline" className="mb-3">{book.category}</Badge>
+                        )}
+                        <p className="text-xs text-muted-foreground line-clamp-2 mb-4">
+                          {book.description || "No description available"}
+                        </p>
+                        <Button
+                          className="w-full"
+                          variant={book.available_copies > 0 ? "default" : "secondary"}
+                          disabled={book.available_copies <= 0}
+                          onClick={() => handleBorrowClick(book)}
+                        >
+                          {book.available_copies > 0 ? "Borrow Book" : "Not Available"}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
             ) : (
@@ -144,6 +237,43 @@ const Catalog = () => {
             )}
           </div>
         </section>
+
+        {/* Borrow Confirmation Dialog */}
+        <Dialog open={!!borrowingBook} onOpenChange={() => setBorrowingBook(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm Borrowing</DialogTitle>
+              <DialogDescription>
+                You are about to borrow this book. Please confirm.
+              </DialogDescription>
+            </DialogHeader>
+            {borrowingBook && (
+              <div className="py-4">
+                <h4 className="font-semibold text-lg">{borrowingBook.title}</h4>
+                <p className="text-muted-foreground">by {borrowingBook.author}</p>
+                <p className="text-sm mt-2">ISBN: {borrowingBook.isbn}</p>
+                <div className="mt-4 p-3 bg-muted rounded-lg">
+                  <p className="text-sm">
+                    <strong>Loan period:</strong> {isFaculty ? "30 days" : "14 days"}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {isFaculty
+                      ? "As faculty, you have extended borrowing privileges."
+                      : "Please return the book before the due date to avoid penalties."}
+                  </p>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBorrowingBook(null)}>
+                Cancel
+              </Button>
+              <Button onClick={handleBorrow} disabled={borrowBook.isPending}>
+                {borrowBook.isPending ? "Processing..." : "Confirm Borrow"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </Layout>
     </>
   );

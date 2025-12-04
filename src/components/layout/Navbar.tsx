@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Book, Menu, X, User, LogIn, LogOut, Search } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Book, Menu, X, User, LogIn, LogOut, Search, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
 import { useToast } from "@/hooks/use-toast";
 
 const Navbar = () => {
@@ -11,6 +13,7 @@ const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { role, isAdmin } = useUserRole();
   const { toast } = useToast();
 
   const navLinks = [
@@ -28,6 +31,17 @@ const Navbar = () => {
       description: "You have been successfully signed out.",
     });
     navigate("/");
+  };
+
+  const getRoleBadgeVariant = () => {
+    switch (role) {
+      case "librarian":
+        return "default";
+      case "faculty":
+        return "secondary";
+      default:
+        return "outline";
+    }
   };
 
   return (
@@ -57,6 +71,20 @@ const Navbar = () => {
                 </Button>
               </Link>
             ))}
+            {user && (
+              <Link to="/dashboard">
+                <Button
+                  variant="nav"
+                  className={cn(
+                    "font-medium gap-2",
+                    isActive("/dashboard") && "text-primary bg-primary/5"
+                  )}
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  Dashboard
+                </Button>
+              </Link>
+            )}
           </div>
 
           {/* Desktop Actions */}
@@ -68,9 +96,16 @@ const Navbar = () => {
             </Link>
             {user ? (
               <>
-                <span className="text-sm text-muted-foreground">
-                  {user.email}
-                </span>
+                <div className="flex items-center gap-2">
+                  {role && (
+                    <Badge variant={getRoleBadgeVariant()} className="capitalize">
+                      {role}
+                    </Badge>
+                  )}
+                  <span className="text-sm text-muted-foreground max-w-[120px] truncate">
+                    {user.user_metadata?.full_name || user.email}
+                  </span>
+                </div>
                 <Button variant="outline" className="gap-2" onClick={handleSignOut}>
                   <LogOut className="w-4 h-4" />
                   Sign Out
@@ -123,6 +158,26 @@ const Navbar = () => {
                   {link.label}
                 </Link>
               ))}
+              {user && (
+                <Link
+                  to="/dashboard"
+                  onClick={() => setIsOpen(false)}
+                  className={cn(
+                    "px-4 py-2 rounded-lg transition-colors flex items-center gap-2",
+                    isActive("/dashboard")
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "text-foreground hover:bg-muted"
+                  )}
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  Dashboard
+                  {role && (
+                    <Badge variant={getRoleBadgeVariant()} className="capitalize ml-auto">
+                      {role}
+                    </Badge>
+                  )}
+                </Link>
+              )}
               <div className="flex gap-2 mt-4 px-4">
                 {user ? (
                   <Button variant="outline" className="w-full" onClick={() => { handleSignOut(); setIsOpen(false); }}>
