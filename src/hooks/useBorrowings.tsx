@@ -82,19 +82,14 @@ export const useBorrowBook = () => {
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + daysToKeep);
 
-      // Create borrowing
-      const { error: borrowError } = await supabase.from("borrowings").insert({
-        user_id: user.id,
-        book_id: bookId,
-        due_date: dueDate.toISOString(),
+      // Use atomic database function to prevent race conditions
+      const { error } = await supabase.rpc("borrow_book", {
+        p_book_id: bookId,
+        p_user_id: user.id,
+        p_due_date: dueDate.toISOString(),
       });
-      if (borrowError) throw borrowError;
-
-      // Decrease available copies
-      const { data: book } = await supabase.from("books").select("available_copies").eq("id", bookId).single();
-      if (book && book.available_copies > 0) {
-        await supabase.from("books").update({ available_copies: book.available_copies - 1 }).eq("id", bookId);
-      }
+      
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["books"] });
@@ -113,18 +108,13 @@ export const useReturnBook = () => {
 
   return useMutation({
     mutationFn: async ({ borrowingId, bookId }: { borrowingId: string; bookId: string }) => {
-      // Update borrowing status
-      const { error: borrowError } = await supabase
-        .from("borrowings")
-        .update({ status: "returned", return_date: new Date().toISOString() })
-        .eq("id", borrowingId);
-      if (borrowError) throw borrowError;
-
-      // Increase available copies
-      const { data: book } = await supabase.from("books").select("available_copies").eq("id", bookId).single();
-      if (book) {
-        await supabase.from("books").update({ available_copies: book.available_copies + 1 }).eq("id", bookId);
-      }
+      // Use atomic database function to prevent race conditions
+      const { error } = await supabase.rpc("return_book", {
+        p_borrowing_id: borrowingId,
+        p_book_id: bookId,
+      });
+      
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["books"] });
