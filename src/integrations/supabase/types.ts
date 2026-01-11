@@ -150,12 +150,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      borrow_book: {
+        Args: { p_book_id: string; p_due_date: string; p_user_id: string }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      return_book: {
+        Args: { p_book_id: string; p_borrowing_id: string }
+        Returns: undefined
       }
     }
     Enums: {
