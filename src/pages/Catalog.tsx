@@ -194,8 +194,16 @@ const Catalog = () => {
                 {filteredBooks.map((book) => (
                   <Card key={book.id} className="group overflow-hidden hover:shadow-lg transition-shadow">
                     <CardContent className="p-0">
-                      <div className="aspect-[3/4] bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                        <BookOpen className="w-16 h-16 text-primary/30" />
+                      <div className="aspect-[3/4] bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center overflow-hidden">
+                        {book.cover_url ? (
+                          <img 
+                            src={book.cover_url} 
+                            alt={book.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <BookOpen className="w-16 h-16 text-primary/30" />
+                        )}
                       </div>
                       <div className="p-4">
                         <Badge variant={book.available_copies > 0 ? "default" : "secondary"} className="mb-2">
