@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,27 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useBooks, useAddBook, useUpdateBook, useDeleteBook, Book } from "@/hooks/useBooks";
-import { Plus, Pencil, Trash2, Search } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Plus, Pencil, Trash2, Search, Upload, Image } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+
+// Generate a unique ISBN-13 format
+const generateISBN = (): string => {
+  const prefix = "978";
+  const group = Math.floor(Math.random() * 10).toString();
+  const publisher = Math.floor(Math.random() * 100000).toString().padStart(5, "0");
+  const title = Math.floor(Math.random() * 1000).toString().padStart(3, "0");
+  const baseISBN = `${prefix}${group}${publisher}${title}`;
+  
+  // Calculate check digit
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    sum += parseInt(baseISBN[i]) * (i % 2 === 0 ? 1 : 3);
+  }
+  const checkDigit = (10 - (sum % 10)) % 10;
+  
+  return `${baseISBN}${checkDigit}`;
+};
 
 interface BookManagementProps {
   canDelete?: boolean;
@@ -33,10 +53,16 @@ const BookManagement = ({ canDelete = false }: BookManagementProps) => {
   const addBook = useAddBook();
   const updateBook = useUpdateBook();
   const deleteBook = useDeleteBook();
+  const { toast } = useToast();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     title: "",
     author: "",
@@ -67,19 +93,113 @@ const BookManagement = ({ canDelete = false }: BookManagementProps) => {
       cover_url: "",
     });
     setEditingBook(null);
+    setImageFile(null);
+    setImagePreview(null);
   };
 
-  const handleAdd = () => {
-    addBook.mutate(formData, {
-      onSuccess: () => {
-        setIsAddOpen(false);
-        resetForm();
-      },
-    });
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
-  const handleEdit = (book: Book) => {
+  const uploadImage = async (file: File): Promise<string | null> => {
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${crypto.randomUUID()}.${fileExt}`;
+    const filePath = fileName;
+
+    const { error } = await supabase.storage
+      .from("book-covers")
+      .upload(filePath, file);
+
+    if (error) {
+      toast({
+        title: "Error uploading image",
+        description: error.message,
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from("book-covers")
+      .getPublicUrl(filePath);
+
+    return publicUrl;
+  };
+
+  const handleAdd = async () => {
+    setIsUploading(true);
+    try {
+      let coverUrl = formData.cover_url;
+      
+      if (imageFile) {
+        const uploadedUrl = await uploadImage(imageFile);
+        if (uploadedUrl) {
+          coverUrl = uploadedUrl;
+        }
+      }
+      
+      // Auto-generate ISBN if not provided
+      const isbn = formData.isbn || generateISBN();
+      
+      addBook.mutate(
+        { ...formData, cover_url: coverUrl, isbn },
+        {
+          onSuccess: () => {
+            setIsAddOpen(false);
+            resetForm();
+          },
+        }
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleOpenAdd = () => {
+    resetForm();
+    setFormData(prev => ({ ...prev, isbn: generateISBN() }));
+    setIsAddOpen(true);
+  };
+
+
+  const handleUpdate = async () => {
+    if (!editingBook) return;
+    setIsUploading(true);
+    try {
+      let coverUrl = formData.cover_url;
+      
+      if (imageFile) {
+        const uploadedUrl = await uploadImage(imageFile);
+        if (uploadedUrl) {
+          coverUrl = uploadedUrl;
+        }
+      }
+      
+      updateBook.mutate(
+        { id: editingBook.id, ...formData, cover_url: coverUrl },
+        {
+          onSuccess: () => {
+            setEditingBook(null);
+            resetForm();
+          },
+        }
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleEditBook = (book: Book) => {
     setEditingBook(book);
+    setImagePreview(book.cover_url || null);
     setFormData({
       title: book.title,
       author: book.author,
@@ -90,19 +210,6 @@ const BookManagement = ({ canDelete = false }: BookManagementProps) => {
       available_copies: book.available_copies,
       cover_url: book.cover_url || "",
     });
-  };
-
-  const handleUpdate = () => {
-    if (!editingBook) return;
-    updateBook.mutate(
-      { id: editingBook.id, ...formData },
-      {
-        onSuccess: () => {
-          setEditingBook(null);
-          resetForm();
-        },
-      }
-    );
   };
 
   const handleDelete = (id: string) => {
@@ -119,19 +226,57 @@ const BookManagement = ({ canDelete = false }: BookManagementProps) => {
             <CardTitle>Book Management</CardTitle>
             <CardDescription>Add, edit, or remove books from the library</CardDescription>
           </div>
-          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+          <Dialog open={isAddOpen} onOpenChange={(open) => { if (!open) resetForm(); setIsAddOpen(open); }}>
             <DialogTrigger asChild>
-              <Button className="gap-2">
+              <Button className="gap-2" onClick={handleOpenAdd}>
                 <Plus className="w-4 h-4" />
                 Add Book
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add New Book</DialogTitle>
                 <DialogDescription>Enter the book details below</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+                {/* Image Upload */}
+                <div className="grid gap-2">
+                  <Label>Book Cover</Label>
+                  <div className="flex items-center gap-4">
+                    <div 
+                      className="w-24 h-32 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted cursor-pointer hover:border-primary transition-colors overflow-hidden"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {imagePreview ? (
+                        <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <Image className="w-8 h-8 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageChange}
+                        className="hidden"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="gap-2"
+                      >
+                        <Upload className="w-4 h-4" />
+                        Upload Image
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        JPG, PNG or WebP (max 5MB)
+                      </p>
+                    </div>
+                  </div>
+                </div>
                 <div className="grid gap-2">
                   <Label htmlFor="title">Title *</Label>
                   <Input
@@ -149,11 +294,12 @@ const BookManagement = ({ canDelete = false }: BookManagementProps) => {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="isbn">ISBN *</Label>
+                  <Label htmlFor="isbn">ISBN (Auto-generated)</Label>
                   <Input
                     id="isbn"
                     value={formData.isbn}
-                    onChange={(e) => setFormData({ ...formData, isbn: e.target.value })}
+                    readOnly
+                    className="bg-muted font-mono"
                   />
                 </div>
                 <div className="grid gap-2">
@@ -172,31 +318,29 @@ const BookManagement = ({ canDelete = false }: BookManagementProps) => {
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="total">Total Copies</Label>
-                    <Input
-                      id="total"
-                      type="number"
-                      min="1"
-                      value={formData.total_copies}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          total_copies: parseInt(e.target.value),
-                          available_copies: parseInt(e.target.value),
-                        })
-                      }
-                    />
-                  </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="total">Total Copies</Label>
+                  <Input
+                    id="total"
+                    type="number"
+                    min="1"
+                    value={formData.total_copies}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        total_copies: parseInt(e.target.value),
+                        available_copies: parseInt(e.target.value),
+                      })
+                    }
+                  />
                 </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsAddOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleAdd} disabled={addBook.isPending}>
-                  {addBook.isPending ? "Adding..." : "Add Book"}
+                <Button onClick={handleAdd} disabled={addBook.isPending || isUploading}>
+                  {isUploading ? "Uploading..." : addBook.isPending ? "Adding..." : "Add Book"}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -248,16 +392,51 @@ const BookManagement = ({ canDelete = false }: BookManagementProps) => {
                           onOpenChange={(open) => !open && resetForm()}
                         >
                           <DialogTrigger asChild>
-                            <Button variant="ghost" size="icon" onClick={() => handleEdit(book)}>
+                            <Button variant="ghost" size="icon" onClick={() => handleEditBook(book)}>
                               <Pencil className="w-4 h-4" />
                             </Button>
                           </DialogTrigger>
-                          <DialogContent className="max-w-md">
+                          <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
                             <DialogHeader>
                               <DialogTitle>Edit Book</DialogTitle>
                               <DialogDescription>Update the book details</DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
+                              {/* Image Upload */}
+                              <div className="grid gap-2">
+                                <Label>Book Cover</Label>
+                                <div className="flex items-center gap-4">
+                                  <div 
+                                    className="w-24 h-32 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted cursor-pointer hover:border-primary transition-colors overflow-hidden"
+                                    onClick={() => editFileInputRef.current?.click()}
+                                  >
+                                    {imagePreview ? (
+                                      <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                                    ) : (
+                                      <Image className="w-8 h-8 text-muted-foreground" />
+                                    )}
+                                  </div>
+                                  <div className="flex-1">
+                                    <input
+                                      ref={editFileInputRef}
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={handleImageChange}
+                                      className="hidden"
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => editFileInputRef.current?.click()}
+                                      className="gap-2"
+                                    >
+                                      <Upload className="w-4 h-4" />
+                                      Change Image
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
                               <div className="grid gap-2">
                                 <Label>Title</Label>
                                 <Input
@@ -270,6 +449,14 @@ const BookManagement = ({ canDelete = false }: BookManagementProps) => {
                                 <Input
                                   value={formData.author}
                                   onChange={(e) => setFormData({ ...formData, author: e.target.value })}
+                                />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>ISBN</Label>
+                                <Input
+                                  value={formData.isbn}
+                                  readOnly
+                                  className="bg-muted font-mono"
                                 />
                               </div>
                               <div className="grid gap-2">
@@ -316,8 +503,8 @@ const BookManagement = ({ canDelete = false }: BookManagementProps) => {
                               <Button variant="outline" onClick={resetForm}>
                                 Cancel
                               </Button>
-                              <Button onClick={handleUpdate} disabled={updateBook.isPending}>
-                                {updateBook.isPending ? "Saving..." : "Save Changes"}
+                              <Button onClick={handleUpdate} disabled={updateBook.isPending || isUploading}>
+                                {isUploading ? "Uploading..." : updateBook.isPending ? "Saving..." : "Save Changes"}
                               </Button>
                             </DialogFooter>
                           </DialogContent>
